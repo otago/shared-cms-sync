@@ -58,10 +58,42 @@ abstract class SyncService
      * The snapshot holding this record's data, or null if none has been
      * downloaded yet.
      *
+     * Typed as a plain DataObject rather than the module's Snapshot: all this
+     * needs is a Data field holding the response. Demanding the module's class
+     * would mean reparenting the snapshot tables of a site already using this
+     * pattern, which moves their columns to a new base table and throws away
+     * the stored copies the download step compares against — so the next run
+     * would find everything "changed" and republish the lot.
+     *
      * @param DataObject $record
      * @return DataObject|null
      */
     abstract public function getSnapshotFor(DataObject $record): ?DataObject;
+
+    /**
+     * Decode a stored response and walk to the payload by dotted path.
+     *
+     * @param string|null $data
+     * @param string      $path
+     * @return mixed
+     */
+    protected function extractPayload(?string $data, string $path)
+    {
+        if (!$data) {
+            return null;
+        }
+
+        $value = json_decode($data, true);
+
+        foreach (explode('.', $path) as $segment) {
+            if (!is_array($value) || !array_key_exists($segment, $value)) {
+                return null;
+            }
+            $value = $value[$segment];
+        }
+
+        return $value;
+    }
 
     /**
      * A hook for reshaping the payload before it is compared and written —
@@ -115,7 +147,7 @@ abstract class SyncService
             return 'skipped';
         }
 
-        $payload = $snapshot->getPayload($this->getPayloadPath());
+        $payload = $this->extractPayload($snapshot->Data, $this->getPayloadPath());
         if (!is_array($payload)) {
             $this->report("WARN  {$label} — snapshot payload is not usable");
 
