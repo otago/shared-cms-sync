@@ -1,0 +1,5 @@
+---
+Name: shared-cms-sync
+---
+# Host sites configure their own endpoints and services; the module ships no
+# defaults, because a default endpoint would be a default wrong endpoint.
