@@ -235,15 +235,17 @@ class SyncAdmin extends LeftAndMain
 
         $this->startSSE((int) $this->config()->get('step_time_limit'));
 
+        // The event names are the client's protocol, not labels: it advances to
+        // the next step on 'complete', and treats a stream that ends without
+        // one as a dropped connection.
         if (!$step) {
             $this->sendSSE('error', "Unknown step '{$stepId}'");
-            $this->sendSSE('done', '');
 
             return null;
         }
 
         if ($cursor === 0) {
-            $this->sendSSE('start', $step['label'] ?? $stepId);
+            $this->sendSSE('step', ($step['label'] ?? $stepId) . '...');
         }
 
         try {
@@ -252,7 +254,6 @@ class SyncAdmin extends LeftAndMain
             // Report and stop this step rather than letting the exception reach
             // the client as a broken stream, which the screen cannot explain.
             $this->sendSSE('error', $e->getMessage());
-            $this->sendSSE('done', '');
 
             return null;
         }
@@ -263,7 +264,9 @@ class SyncAdmin extends LeftAndMain
             return null;
         }
 
-        $this->sendSSE('done', ($step['done'] ?? 'Done') . " ({$elapsed}s)");
+        $done = $step['done'] ?? 'Done';
+        $this->sendSSE('step_done', $done . " ({$elapsed}s)");
+        $this->sendSSE('complete', $done);
 
         return null;
     }
