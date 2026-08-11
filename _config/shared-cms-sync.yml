@@ -1,5 +1,12 @@
 ---
 Name: shared-cms-sync
 ---
-# Host sites configure their own endpoints and services; the module ships no
-# defaults, because a default endpoint would be a default wrong endpoint.
+# Host sites configure their own endpoints and steps; the module ships no
+# defaults for those, because a default endpoint would be a default wrong one.
+#
+# The shortcut to the Sync Data screen is the exception: it is the same on every
+# site that has the screen, so it is applied here rather than asking each one to
+# remember. Turn it off with SyncFabExtension.enabled: false.
+SilverStripe\Admin\LeftAndMain:
+  extensions:
+    - Otago\SharedCmsSync\Extension\SyncFabExtension
