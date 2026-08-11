@@ -4,6 +4,8 @@ namespace Otago\SharedCmsSync\Extension;
 
 use Otago\SharedCmsSync\Admin\SyncAdmin;
 use SilverStripe\Admin\AdminRootController;
+use SilverStripe\Control\Controller;
+use SilverStripe\Control\Director;
 use SilverStripe\Core\Config\Configurable;
 use SilverStripe\Core\Extension;
 use SilverStripe\Security\Permission;
@@ -61,13 +63,23 @@ class SyncFabExtension extends Extension
      * The admin's own address, rather than a hardcoded one, so a site that
      * changes SyncAdmin.url_segment keeps a working shortcut.
      *
+     * Rooted at the base URL rather than taken from AdminRootController::
+     * admin_url(), which returns a path relative to the CMS <base> tag. That
+     * resolves correctly in an href, but the script also compares it against
+     * window.location.pathname to decide whether it is already on the sync
+     * screen — and "admin/sync" never equals "/admin/sync".
+     *
      * @return string
      */
     private function syncAdminUrl(): string
     {
         $segment = (string) SyncAdmin::config()->get('url_segment');
 
-        return rtrim(AdminRootController::admin_url(), '/') . '/' . trim($segment, '/') . '/';
+        return Controller::join_links(
+            Director::baseURL(),
+            AdminRootController::get_admin_route(),
+            $segment
+        ) . '/';
     }
 
     /**

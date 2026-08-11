@@ -1,14 +1,18 @@
 (function () {
-    // Set by SyncFabExtension from the admin's own link, so a site that
-    // changes SyncAdmin.url_segment does not end up with a shortcut to a
-    // page that no longer exists.
-    var syncUrl = window.__sharedCmsSyncUrl || '/admin/sync/';
+    // Read when it is needed, not when this file loads. SyncFabExtension
+    // sets the value from the admin's own link, and Requirements does not
+    // promise that inline script runs before this one — reading it once at
+    // load quietly fell back to the default, which happened to be right and
+    // so hid the problem.
+    function getSyncUrl() {
+        return window.__sharedCmsSyncUrl || '/admin/sync/';
+    }
 
     function updateVisibility() {
         var fab = document.getElementById('cms-sync-fab');
         if (!fab) return;
         var here = window.location.pathname.replace(/\/+$/, '');
-        var target = syncUrl.replace(/\/+$/, '');
+        var target = getSyncUrl().replace(/\/+$/, '');
         var onSync = here === target;
         fab.style.display = onSync ? 'none' : 'flex';
     }
@@ -17,9 +21,9 @@
         e.preventDefault();
         var $ = window.jQuery;
         if ($ && $('.cms-container').length) {
-            $('.cms-container').entwine('ss').loadPanel(syncUrl);
+            $('.cms-container').entwine('ss').loadPanel(getSyncUrl());
         } else {
-            window.location.href = syncUrl;
+            window.location.href = getSyncUrl();
         }
     }
 
@@ -29,7 +33,7 @@
         // from calling getAttribute() on text nodes and throwing TypeError.
         var a = document.createElement('a');
         a.id = 'cms-sync-fab';
-        a.href = syncUrl;
+        a.href = getSyncUrl();
         a.title = 'Sync Data';
         a.setAttribute('data-tooltip', 'Sync Data');
         a.addEventListener('click', navigate);
