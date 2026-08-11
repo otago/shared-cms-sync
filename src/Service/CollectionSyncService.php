@@ -63,6 +63,28 @@ abstract class CollectionSyncService
     }
 
     /**
+     * Field holding a fingerprint of the source this record was last built
+     * from. Return null to fall back to comparing field by field.
+     *
+     * This exists because comparing field by field cannot be made to work in
+     * general. A site transforms content as it is written — rewriting links,
+     * cleaning markup, resolving shortcodes — so what comes back out is not
+     * what went in, and the incoming value never matches the stored one. The
+     * record is then rewritten and republished on every run, for a difference
+     * no one made and no one can see.
+     *
+     * Fingerprinting the source sidesteps all of it. If the far end is saying
+     * exactly what it said last time, there is nothing to do, whatever this
+     * site did to the content on the way in.
+     *
+     * @return string|null
+     */
+    public function getSourceHashField(): ?string
+    {
+        return 'SyncedSourceHash';
+    }
+
+    /**
      * Somewhere for new records to be created. Return 0 for records that are
      * not pages.
      * @return int
@@ -131,6 +153,22 @@ abstract class CollectionSyncService
                 }
             }
 
+            // If the far end is saying exactly what it said last time, and the
+            // result of that is still published, there is nothing to do.
+            $hashField = $this->getSourceHashField();
+            $hash = $hashField ? sha1((string) $snapshot->Data) : null;
+
+            if (
+                !$isNew
+                && $hash !== null
+                && $record->hasField($hashField)
+                && $record->getField($hashField) === $hash
+                && $this->isPublished($record)
+            ) {
+                $tally['unchanged']++;
+                continue;
+            }
+
             $changed = $isNew;
 
             foreach ($this->getFieldMap() as $remote => $local) {
@@ -153,6 +191,10 @@ abstract class CollectionSyncService
             if (!$changed && $this->isPublished($record)) {
                 $tally['unchanged']++;
                 continue;
+            }
+
+            if ($hash !== null && $record->hasField($hashField)) {
+                $record->setField($hashField, $hash);
             }
 
             $record->write();
