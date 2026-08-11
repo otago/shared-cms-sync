@@ -277,6 +277,16 @@ class SyncAdmin extends LeftAndMain
     {
         $service = Injector::inst()->get($step['service']);
 
+        // Point the service's reporter at stdout, which runStep() is capturing.
+        // Without this a service that reports through the callable says nothing
+        // here: a step that could not reach its endpoint, or found nothing to
+        // do, finishes in no time and looks exactly like a success.
+        if (method_exists($service, 'setReporter')) {
+            $service->setReporter(function (string $message): void {
+                echo $message . "\n";
+            });
+        }
+
         // A chunked service takes the cursor and hands back the next one.
         // Everything else ignores it and finishes in one go.
         return !empty($step['chunked'])
