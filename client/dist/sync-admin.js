@@ -13,7 +13,12 @@
         queue:        [],     // remaining steps for the current run
         section:      '',     // last section header written to the log
         totalSteps:   0,
-        doneSteps:    0
+        doneSteps:    0,
+        paused:       false,
+        stopped:      false,
+        resumeFn:     null,   // what to run when the hold is lifted
+        pausedAt:     0,
+        pausedTotal:  0       // ms spent paused, so elapsed shows working time
     };
 
     // Live DOM lookups — always reflect the current PJAX-rendered content
@@ -25,6 +30,9 @@
     document.addEventListener('click', function (e) {
         var trigger = e.target.closest('.sync-admin__trigger');
         if (trigger) { start(trigger.dataset.mode, trigger.dataset.title); return; }
+        if (e.target.closest('#sync-pause'))          { pauseRun(); return; }
+        if (e.target.closest('#sync-resume'))         { resumeRun(); return; }
+        if (e.target.closest('#sync-stop'))           { stopRun(); return; }
         if (e.target.closest('#sync-modal-minimize')) { hideModal(); return; }
         if (e.target.closest('#sync-modal-close'))    { hideModal(); stopStream(); setChipHidden(true); return; }
         if (e.target.closest('#sync-chip'))           { showModal(); return; }
@@ -62,6 +70,12 @@
         state.section    = '';
         state.totalSteps = 0;
         state.doneSteps  = 0;
+        state.paused      = false;
+        state.stopped     = false;
+        state.resumeFn    = null;
+        state.pausedAt    = 0;
+        state.pausedTotal = 0;
+        updateControls();
         updateStats();
         startTimer();
 
@@ -85,7 +99,54 @@
             });
     }
 
+    // Every point where the client is about to start another unit of work goes
+    // through here: between steps, and between the chunks of a chunked step.
+    // Pausing mid-request is not possible — a step is one PHP request — so the
+    // hold happens at the next boundary, which also means nothing is ever left
+    // half-applied.
+    function gate(next) {
+        if (state.stopped) { return; }
+        if (state.paused)  { state.resumeFn = next; enterPausedUI(); return; }
+        next();
+    }
+
+    function pauseRun() {
+        if (!state.running || state.paused) { return; }
+        state.paused = true;
+        addLog('Pausing — holding after the current step…', 'info');
+        updateControls();
+    }
+
+    function resumeRun() {
+        if (!state.running || !state.paused) { return; }
+        state.paused = false;
+        if (state.pausedAt) {
+            state.pausedTotal += Date.now() - state.pausedAt;
+            state.pausedAt = 0;
+        }
+        addLog('Resuming…', 'info');
+        exitPausedUI();
+        updateControls();
+        var next = state.resumeFn;
+        state.resumeFn = null;
+        if (next) { next(); }
+    }
+
+    function stopRun() {
+        if (!state.running) { return; }
+        state.stopped  = true;
+        state.paused   = false;
+        state.resumeFn = null;
+        // The request in flight keeps running server-side: the admin sets
+        // ignore_user_abort, so closing the connection does not cancel the work
+        // already started. Say so rather than implying it was undone.
+        addLog('Stopped. The step already running will finish on the server; nothing further will start.', 'info');
+        exitPausedUI();
+        finalize('stopped', 'Stopped');
+    }
+
     function runNextStep() {
+        if (state.stopped) { return; }
         if (!state.queue.length) {
             addLog('✔ All steps complete', 'complete');
             finalize('success', 'Completed successfully');
@@ -123,17 +184,19 @@
             state.source = null;
             var d = parse(e);
             var next = parseInt(d.message, 10);
-            runStepRequest(step, isNaN(next) ? 0 : next);
+            gate(function () { runStepRequest(step, isNaN(next) ? 0 : next); });
         });
         src.addEventListener('complete',  function () {
             src.close();
             state.source = null;
-            runNextStep();
+            gate(runNextStep);
         });
         src.addEventListener('error', function (e) {
             // 'continue'/'complete' already handled this stream and moved on —
             // ignore the trailing connection-closed error EventSource fires after.
             if (state.source !== src) { return; }
+            // Stopping closes the stream on purpose; that is not an error.
+            if (state.stopped) { return; }
             var msg = 'Connection error during "' + step.label + '"';
             try { if (e.data) { msg = JSON.parse(e.data).message; } } catch (_) {}
             src.close();
@@ -160,11 +223,52 @@
         var closeBtn   = el('sync-modal-close');
         var minimizeBtn = el('sync-modal-minimize');
 
+        var note = el('sync-paused-note');
+
+        if (note)        { note.hidden = true; }
         if (spinner)     { spinner.hidden = true; }
         if (statusEl)    { statusEl.hidden = false; statusEl.textContent = statusText; statusEl.className = 'sync-admin__status sync-admin__status--' + kind; }
         if (closeBtn)    { closeBtn.hidden = false; }
         if (minimizeBtn) { minimizeBtn.hidden = true; }
+        updateControls();
         setChipHidden(true);
+    }
+
+    // Which of pause / resume / stop make sense right now. Offering a control
+    // that does nothing is worse than not offering it.
+    function updateControls() {
+        var pause  = el('sync-pause');
+        var resume = el('sync-resume');
+        var stop   = el('sync-stop');
+        var live   = state.running && !state.stopped;
+
+        if (pause)  { pause.hidden  = !(live && !state.paused); }
+        if (resume) { resume.hidden = !(live && state.paused); }
+        if (stop)   { stop.hidden   = !live; }
+    }
+
+    function enterPausedUI() {
+        state.pausedAt = Date.now();
+
+        var spinner = el('sync-spinner');
+        var note    = el('sync-paused-note');
+        var chip    = el('sync-chip-label');
+
+        if (spinner) { spinner.hidden = true; }
+        if (note)    { note.hidden = false; }
+        if (chip)    { chip.textContent = 'Paused'; }
+        updateSubtitle('Paused — ' + state.queue.length + ' step(s) still to run');
+        updateControls();
+    }
+
+    function exitPausedUI() {
+        var spinner = el('sync-spinner');
+        var note    = el('sync-paused-note');
+        var chip    = el('sync-chip-label');
+
+        if (spinner) { spinner.hidden = state.stopped; }
+        if (note)    { note.hidden = true; }
+        if (chip)    { chip.textContent = state.currentTitle + '…'; }
     }
 
     function parse(e) { try { return JSON.parse(e.data); } catch (_) { return { message: '' }; } }
@@ -199,6 +303,8 @@
         if (closeBtn)    { closeBtn.hidden = true; }
         if (minimizeBtn) { minimizeBtn.hidden = false; }
         if (chipLabel)   { chipLabel.textContent = title + '…'; }
+        var note = el('sync-paused-note');
+        if (note)        { note.hidden = true; }
         state.currentTitle = title;
     }
 
@@ -240,7 +346,10 @@
         var statElapsed = el('sync-stat-elapsed');
         if (statEvents)  { statEvents.textContent = state.eventCount + (state.eventCount === 1 ? ' event' : ' events'); }
         if (statElapsed) {
-            var secs = Math.floor((Date.now() - state.startedAt) / 1000);
+            // Time spent paused is not time the sync was working, and counting
+            // it makes the figure useless for judging how long a run takes.
+            var pausedSoFar = state.pausedTotal + (state.pausedAt ? Date.now() - state.pausedAt : 0);
+            var secs = Math.max(0, Math.floor((Date.now() - state.startedAt - pausedSoFar) / 1000));
             var mm = String(Math.floor(secs / 60)).padStart(2, '0');
             var ss = String(secs % 60).padStart(2, '0');
             statElapsed.textContent = mm + ':' + ss;

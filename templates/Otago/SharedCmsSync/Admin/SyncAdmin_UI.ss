@@ -74,6 +74,29 @@
                 </div>
             </div>
             <div class="sync-admin__modal-actions">
+                <%-- Pause holds at the next step boundary rather than killing
+                     the step in flight, so nothing is left half-applied. --%>
+                <button type="button"
+                        class="sync-admin__modal-iconbtn"
+                        id="sync-pause"
+                        hidden
+                        aria-label="Pause after the current step">
+                    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M8 5h3v14H8zm5 0h3v14h-3z"/></svg>
+                </button>
+                <button type="button"
+                        class="sync-admin__modal-iconbtn"
+                        id="sync-resume"
+                        hidden
+                        aria-label="Resume">
+                    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M8 5l11 7-11 7z"/></svg>
+                </button>
+                <button type="button"
+                        class="sync-admin__modal-iconbtn sync-admin__modal-iconbtn--stop"
+                        id="sync-stop"
+                        hidden
+                        aria-label="Stop the run">
+                    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M7 7h10v10H7z"/></svg>
+                </button>
                 <button type="button"
                         class="sync-admin__modal-iconbtn"
                         id="sync-modal-minimize"
@@ -100,6 +123,9 @@
             <div class="sync-admin__stats">
                 <span class="sync-admin__stat" id="sync-stat-events">0 events</span>
                 <span class="sync-admin__stat" id="sync-stat-elapsed">00:00</span>
+            </div>
+            <div class="sync-admin__paused-note" id="sync-paused-note" hidden>
+                Paused — the run will continue from the next step.
             </div>
             <div class="sync-admin__spinner" id="sync-spinner">
                 <div class="sync-admin__spinner-dot"></div>

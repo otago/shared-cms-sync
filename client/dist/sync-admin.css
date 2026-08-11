@@ -499,3 +499,26 @@
     color: rgba(255, 255, 255, .55);
     font-size: .8rem;
 }
+
+/* Pause / resume / stop --------------------------------------------------- */
+
+.sync-admin__modal-iconbtn--stop:hover {
+    /* Stop ends the run — it should not look like the other two. */
+    color: #fca5a5;
+}
+
+.sync-admin__status--stopped { color: #b45309; }
+.sync-admin__status--paused  { color: #b45309; }
+
+/* The spinner reads as "working". While paused nothing is, so it is replaced
+   by a still label rather than left spinning against a run that has halted. */
+.sync-admin__paused-note {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    font-size: .82rem;
+    font-weight: 600;
+    color: #b45309;
+}
+
+.sync-admin__paused-note[hidden] { display: none; }
